@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>SmartPark AI — Birmingham Parking Intelligence</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<style>
+  :root{
+    --bg:#0a0e17; --panel:#0f1524; --border:#1e2740; --text:#e8ecf5;
+    --muted:#8b95ab; --green:#22c55e; --red:#ef4444; --orange:#f59e0b; --blue:#3b82f6; --purple:#8b5cf6;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;font-family:'Segoe UI',Arial,sans-serif;background:var(--bg);color:var(--text);}
+  header{display:flex;justify-content:space-between;align-items:center;padding:18px 28px;border-bottom:1px solid var(--border);}
+  header h1{margin:0;font-size:22px;}
+  header h1 span{color:var(--blue);}
+  header p{margin:2px 0 0;color:var(--muted);font-size:13px;}
+  .wrap{padding:24px 28px;}
+  .cards{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:24px;}
+  .card{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:18px;}
+  .card .num{font-size:32px;font-weight:700;}
+  .card .lbl{color:var(--muted);font-size:13px;margin-top:4px;}
+  .green{color:var(--green);} .red{color:var(--red);}
+  .layout{display:grid;grid-template-columns:340px 1fr;gap:16px;}
+  .panel{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:18px;}
+  input,select{width:100%;padding:10px;border-radius:8px;border:1px solid var(--border);background:#0a0e17;color:var(--text);margin-top:4px;}
+  label{font-size:12px;color:var(--muted);text-transform:uppercase;}
+  button{width:100%;padding:12px;border:none;border-radius:8px;background:linear-gradient(90deg,var(--blue),var(--purple));color:#fff;font-weight:600;cursor:pointer;margin-top:14px;}
+  button:hover{opacity:.9;}
+  .result{margin-top:18px;padding:16px;border-radius:10px;background:#0a0e17;border:1px solid var(--border);}
+  .result.available{border-color:var(--green);}
+  .result.nearfull{border-color:var(--orange);}
+  .result.full{border-color:var(--red);}
+  .status-line{font-size:18px;font-weight:700;margin-bottom:6px;}
+  .bar-bg{background:#1e2740;border-radius:6px;height:8px;margin-top:4px;overflow:hidden;}
+  .bar-fill{height:100%;border-radius:6px;}
+  .grid-lots{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:14px;margin-top:16px;}
+  .lot-card{background:#0a0e17;border:1px solid var(--border);border-radius:10px;padding:14px;}
+  .lot-card .name{font-size:13px;color:var(--muted);margin-bottom:6px;}
+  .lot-card .pct{font-size:26px;font-weight:700;}
+  .small-muted{font-size:12px;color:var(--muted);margin-top:8px;}
+  .tab-btn{padding:10px 16px;cursor:pointer;color:var(--muted);font-size:13px;border-bottom:2px solid transparent;}
+  .tab-btn.active{color:var(--blue);border-bottom-color:var(--blue);}
+  .tab-panel{padding-top:16px;}
+html.embed header{display:none}</style><script>if(location.search.includes("embed"))document.documentElement.classList.add("embed")</script>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>Smart<span>Park</span> AI</h1>
+    <p>Birmingham Parking Intelligence</p>
+  </div>
+  <div style="text-align:right"><div id="prof" style="position:relative;display:inline-block;margin-bottom:6px;cursor:pointer;text-align:left" onclick="document.getElementById('pcard').style.display=document.getElementById('pcard').style.display==='block'?'none':'block'"><span style="display:inline-flex;align-items:center;gap:8px"><span id="pav" style="width:32px;height:32px;border-radius:50%;background:linear-gradient(135deg,#3b82f6,#8b5cf6);display:inline-flex;align-items:center;justify-content:center;font-weight:700;color:#fff">?</span><b id="pname" style="font-size:14px"></b></span><div id="pcard" style="display:none;position:absolute;right:0;top:40px;min-width:230px;z-index:20;background:#111827;border:1px solid #334155;border-radius:10px;padding:12px;font-size:13px;line-height:1.7"></div></div><div class="small-muted" id="clock"></div>
+    <div style="margin-top:6px;font-size:13px"><a href="/portal" style="color:#38bdf8;margin-right:14px;text-decoration:none">Vehicles &amp; Parking Portal</a><a href="#" style="color:#f87171;text-decoration:none" onclick="fetch('/api/logout',{method:'POST'}).then(()=>location='/login');return false">Logout</a></div></div>
+</header>
+
+<div class="wrap">
+
+  <div class="cards">
+    <div class="card"><div class="num green" id="cardAvailable">--</div><div class="lbl">Lots Available Now</div></div>
+    <div class="card"><div class="num red" id="cardFull">--</div><div class="lbl">Lots Near-Full / Full</div></div>
+    <div class="card"><div class="num" id="cardTotal">--</div><div class="lbl">Total Parking Lots</div></div>
+    <div class="card"><div class="num" id="cardAccuracy">--</div><div class="lbl">Model Accuracy</div></div>
+  </div>
+
+  <div class="layout">
+    <div class="panel">
+      <label>Select Parking Lot</label>
+      <select id="lotSelect"></select>
+
+      <label style="margin-top:14px;display:block;">Date</label>
+      <input type="date" id="dateInput">
+
+      <label style="margin-top:14px;display:block;">Time</label>
+      <input type="time" id="timeInput">
+
+      <button onclick="predictNow()">⚡ Predict Availability</button>
+
+      <div class="result" id="resultBox" style="display:none;">
+        <div class="status-line" id="statusLine"></div>
+        <div class="small-muted" id="metaLine"></div>
+        <div style="margin-top:12px;">
+          <div class="small-muted">Predicted Available: <span id="availPctText"></span></div>
+          <div class="bar-bg"><div class="bar-fill" id="availBar" style="background:var(--green);"></div></div>
+        </div>
+        <div style="margin-top:10px;">
+          <div class="small-muted">Predicted Occupied: <span id="occPctText"></span></div>
+          <div class="bar-bg"><div class="bar-fill" id="occBar" style="background:var(--red);"></div></div>
+        </div>
+        <div class="small-muted" style="margin-top:10px;">Estimated available spaces: <span id="spacesText"></span></div>
+        <div class="small-muted" style="margin-top:10px;">Suitable vehicle types: <div id="vtypesText" style="margin-top:6px;display:flex;flex-wrap:wrap;gap:6px;color:#e5e7eb"></div></div>
+      </div>
+
+      <h3 style="margin-top:24px;margin-bottom:8px;font-size:15px;">🕓 Prediction History</h3>
+      <div class="small-muted" style="margin-bottom:8px;">Every prediction you make is saved. Showing latest for the selected lot.</div>
+      <div style="max-height:220px;overflow-y:auto;">
+        <table style="width:100%;border-collapse:collapse;font-size:12px;">
+          <thead>
+            <tr style="text-align:left;color:var(--muted);border-bottom:1px solid var(--border);">
+              <th style="padding:6px 4px;">Logged At</th>
+              <th style="padding:6px 4px;">For Time</th>
+              <th style="padding:6px 4px;">Occupied%</th>
+              <th style="padding:6px 4px;">Status</th>
+            </tr>
+          </thead>
+          <tbody id="historyBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div style="display:flex;justify-content:space-between;align-items:center;">
+        <h3 style="margin-top:0;">All Lots — Current Predicted Status</h3>
+      </div>
+      <div class="grid-lots" id="lotsGrid"></div>
+
+      <div style="display:flex;gap:6px;margin-top:24px;border-bottom:1px solid var(--border);">
+        <div class="tab-btn active" data-tab="forecast" onclick="switchTab('forecast')">📈 Forecast</div>
+        <div class="tab-btn" data-tab="hourly" onclick="switchTab('hourly')">🕐 Hourly</div>
+        <div class="tab-btn" data-tab="weekly" onclick="switchTab('weekly')">📅 Weekly</div>
+        <div class="tab-btn" data-tab="model" onclick="switchTab('model')">🎯 Model</div>
+      </div>
+      <div id="tab-forecast" class="tab-panel">
+        <h4 style="font-weight:400;color:var(--muted);">Historical Occupancy — <span id="histLotName">--</span></h4>
+        <canvas id="historyChart" height="90"></canvas>
+        <h4 id="forecastTitle" style="font-weight:400;color:var(--muted);margin-top:20px;">24h Forecast — <span id="forecastLotName">--</span></h4>
+        <canvas id="forecastChart" height="110"></canvas>
+      </div>
+      <div id="tab-hourly" class="tab-panel" style="display:none;">
+        <h4 style="font-weight:400;color:var(--muted);">Avg Occupancy by Hour — <span id="hourlyLotName">--</span></h4>
+        <canvas id="hourlyChart" height="110"></canvas>
+      </div>
+      <div id="tab-weekly" class="tab-panel" style="display:none;">
+        <h4 style="font-weight:400;color:var(--muted);">Avg Occupancy by Day — <span id="weeklyLotName">--</span></h4>
+        <canvas id="weeklyChart" height="110"></canvas>
+      </div>
+      <div id="tab-model" class="tab-panel" style="display:none;">
+        <h4 style="font-weight:400;color:var(--muted);">Random Forest Model Performance</h4>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:14px;">
+          <div class="lot-card"><div class="name">Accuracy</div><div class="pct" id="modelAcc" style="color:var(--green);">--</div></div>
+          <div class="lot-card"><div class="name">ROC-AUC</div><div class="pct" id="modelAuc" style="color:var(--blue);">--</div></div>
+          <div class="lot-card"><div class="name">Avg Precision</div><div class="pct" id="modelAp" style="color:var(--purple);">--</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+function setClock(){
+  document.getElementById('clock').textContent = new Date().toLocaleString();
+}
+setClock(); setInterval(setClock, 1000);
+
+async function loadLots(){
+  const res = await fetch('/api/lots');
+  const lots = await res.json();
+  const sel = document.getElementById('lotSelect');
+  sel.innerHTML = lots.map(l => `<option value="${l}">${l}</option>`).join('');
+
+  const now = new Date();
+  document.getElementById('dateInput').value = now.toISOString().slice(0,10);
+  document.getElementById('timeInput').value = now.toTimeString().slice(0,5);
+
+  if(lots.length > 0){
+    loadForecast(lots[0]);
+    loadHourly(lots[0]);
+    loadWeekly(lots[0]);
+    loadHistoryChart(lots[0]);
+  }
+  loadModelTab();
+}
+
+async function loadMetrics(){
+  try{
+    const res = await fetch('/api/rf_metrics');
+    const m = await res.json();
+    if(m.accuracy !== undefined){
+      document.getElementById('cardAccuracy').textContent = (m.accuracy*100).toFixed(2) + '%';
+    }
+  }catch(e){}
+}
+
+// Vehicle fit per lot: footprint k (in car-bay units). A vehicle fits if enough free bays exist AND the expected
+// number of free k-bay contiguous slots, capacity*(1-occupancy)^k, is at least 1 (depends on this lot's capacity+occupancy).
+const CARD_VT=[['🚲','Bicycle',0.1],['🏍️','Bike',0.25],['🚗','Car',1],['🚙','SUV',1.25],['🚐','Van',1.75],['🛻','Pickup',1.75],['🚌','Bus',4],['🚚','Truck',5]];
+function vtFit(cap,occPct){
+  const p=Math.min(1,Math.max(0,occPct/100)), avail=Math.max(0,Math.round(cap*(1-p)));
+  return CARD_VT.map(v=>{const need=Math.ceil(v[2]), slots=cap*Math.pow(1-p,v[2]), ok=avail>=need&&slots>=1;
+    return {e:v[0],n:v[1],ok,why:ok?`≈${Math.floor(slots)} slot${Math.floor(slots)===1?'':'s'} free`:(avail<need?`needs ${need} free bay${need>1?'s':''}`:`free space too scattered (≈${slots.toFixed(1)} slots)`)}});}
+function vtChips(r){const f=vtFit(r.capacity,r.predicted_occupied_pct).filter(x=>x.ok);
+  return f.length?f.map(x=>`<span title="${x.n}">${x.e}</span>`).join(' '):'⛔ Full';}
+
+let LOTS=[];
+function openLot(i){
+  const r=LOTS[i]; if(!r) return;
+  const cap=r.capacity, occ=r.predicted_occupied_pct, avail=Math.max(0,Math.round(cap*(1-occ/100))), used=cap-avail;
+  const color=r.status==='Available'?'#22c55e':r.status==='Near Full'?'#f59e0b':'#ef4444';
+  const rows=vtFit(cap,occ).map(x=>`<div style="padding:6px 10px;border:1px solid #334155;border-radius:8px;opacity:${x.ok?1:.4}">${x.e} ${x.n} <small style="color:#94a3b8">· ${x.why}</small></div>`).join('');
+  const m=document.createElement('div'); m.id='lotModal';
+  m.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:100;display:flex;align-items:center;justify-content:center;padding:16px';
+  m.onclick=e=>{if(e.target===m)m.remove()};
+  m.innerHTML=`<div style="background:#111827;border:1px solid #334155;border-radius:14px;padding:22px;max-width:520px;width:100%;max-height:90vh;overflow:auto">
+    <div style="display:flex;justify-content:space-between;align-items:center"><h3 style="margin:0">${r.lot}</h3><button onclick="this.closest('#lotModal').remove()" style="background:none;border:0;color:#94a3b8;font-size:20px;cursor:pointer">✕</button></div>
+    <div style="margin:12px 0;line-height:1.9">Status: <b style="color:${color}">${r.status}</b><br>Occupancy: <b>${occ}%</b> (${used} of ${cap} spaces)<br>Available Spaces: <b>${avail}</b><br>Capacity: <b>${cap}</b></div>
+    <div style="height:8px;background:#1f2937;border-radius:6px;overflow:hidden"><div style="height:100%;width:${occ}%;background:${color}"></div></div>
+    <h4 style="margin:16px 0 8px">Suitable Vehicle Types</h4><div style="display:grid;gap:6px">${rows}</div></div>`;
+  document.body.appendChild(m);
+}
+document.addEventListener('keydown',e=>{if(e.key==='Escape'){const m=document.getElementById('lotModal');if(m)m.remove()}});
+
+async function loadStatusGrid(){
+  const res = await fetch('/api/status');
+  const rows = await res.json();
+  if(!Array.isArray(rows)) return;
+
+  document.getElementById('cardTotal').textContent = rows.length;
+  const availableCount = rows.filter(r => r.status === 'Available').length;
+  const nearFullCount = rows.filter(r => r.status === 'Near Full').length;
+  const fullCount = rows.filter(r => r.status === 'Full').length;
+  document.getElementById('cardAvailable').textContent = availableCount;
+  document.getElementById('cardFull').textContent = nearFullCount + fullCount;
+
+  const grid = document.getElementById('lotsGrid');
+  LOTS = rows;
+  grid.innerHTML = rows.map((r,i) => {
+    const color = r.status === 'Available' ? 'var(--green)' : r.status === 'Near Full' ? 'var(--orange)' : 'var(--red)';
+    return `<div class="lot-card" style="cursor:pointer" title="Click for details" onclick="openLot(${i})">
+      <div class="name">${r.lot}</div>
+      <div class="pct" style="color:${color};">${r.predicted_occupied_pct}%</div>
+      <div class="small-muted">occupied • ${r.status}</div>
+      <div class="small-muted" style="margin-top:6px;font-size:15px;letter-spacing:2px">${vtChips(r)}</div>
+    </div>`;
+  }).join('');
+}
+
+async function predictNow(){
+  const lot = document.getElementById('lotSelect').value;
+  const date = document.getElementById('dateInput').value;
+  const time = document.getElementById('timeInput').value;
+  const dt = `${date}T${time}`;
+
+  const res = await fetch(`/api/predict?lot=${encodeURIComponent(lot)}&datetime=${encodeURIComponent(dt)}`);
+  const r = await res.json();
+  if(r.error){ alert(r.error); return; }
+
+  const box = document.getElementById('resultBox');
+  box.style.display = 'block';
+  box.className = 'result ' + (r.status === 'Available' ? 'available' : r.status === 'Near Full' ? 'nearfull' : 'full');
+
+  const icon = r.status === 'Available' ? '✅ Space Available' : r.status === 'Near Full' ? '🟠 Near Full' : '⛔ Lot Full';
+  document.getElementById('statusLine').textContent = icon;
+  document.getElementById('metaLine').textContent =
+    `Lot: ${r.lot} · Time: ${r.datetime.replace('T',' ')} · Capacity: ${r.capacity}`;
+
+  document.getElementById('availPctText').textContent = r.predicted_available_pct + '%';
+  document.getElementById('availBar').style.width = r.predicted_available_pct + '%';
+
+  document.getElementById('occPctText').textContent = r.predicted_occupied_pct + '%';
+  document.getElementById('occBar').style.width = r.predicted_occupied_pct + '%';
+
+  document.getElementById('spacesText').textContent = r.estimated_available_spaces;
+  // vehicle types that fit: bays needed vs available spaces, and lot capacity for large vehicles
+  const fit=vtFit(r.capacity,r.predicted_occupied_pct).filter(x=>x.ok).map(x=>[x.e+' '+x.n]);
+  document.getElementById('vtypesText').innerHTML=fit.length?fit.map(v=>`<span style="border:1px solid #334155;border-radius:999px;padding:2px 10px;font-size:13px">${v[0]}</span>`).join(''):'<span>⛔ None — lot full</span>';
+
+  loadHistory(lot);
+}
+
+async function loadHistory(lot){
+  const res = await fetch(`/api/history?lot=${encodeURIComponent(lot)}&limit=15`);
+  const rows = await res.json();
+  const body = document.getElementById('historyBody');
+  if(!Array.isArray(rows) || rows.length === 0){
+    body.innerHTML = `<tr><td colspan="4" style="padding:8px 4px;color:var(--muted);">No history yet for this lot -- make a prediction above.</td></tr>`;
+    return;
+  }
+  body.innerHTML = rows.map(r => {
+    const color = r.status === 'Available' ? 'var(--green)' : 'var(--red)';
+    return `<tr style="border-bottom:1px solid var(--border);">
+      <td style="padding:6px 4px;">${r.logged_at}</td>
+      <td style="padding:6px 4px;">${r.requested_datetime.replace('T',' ')}</td>
+      <td style="padding:6px 4px;">${r.predicted_occupied_pct}%</td>
+      <td style="padding:6px 4px;color:${color};">${r.status}</td>
+    </tr>`;
+  }).join('');
+}
+
+function switchTab(name){
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab===name));
+  document.querySelectorAll('.tab-panel').forEach(p => p.style.display = (p.id === 'tab-'+name) ? 'block' : 'none');
+}
+
+let _hourlyChart = null, _weeklyChart = null;
+
+async function loadHourly(lot){
+  document.getElementById('hourlyLotName').textContent = lot;
+  const res = await fetch(`/api/hourly?lot=${encodeURIComponent(lot)}`);
+  const rows = await res.json();
+  if(!Array.isArray(rows)) return;
+  const ctx = document.getElementById('hourlyChart').getContext('2d');
+  if(_hourlyChart) _hourlyChart.destroy();
+  _hourlyChart = new Chart(ctx, {
+    type:'bar',
+    data:{ labels: rows.map(r=>r.hour+':00'), datasets:[{label:'Avg Occupancy', data:rows.map(r=>r.occupancy_rate), backgroundColor:'#3b82f6'}] },
+    options:{ scales:{ y:{min:0,max:1,ticks:{color:'#8b95ab'},grid:{color:'#1e2740'}}, x:{ticks:{color:'#8b95ab'},grid:{display:false}} }, plugins:{legend:{display:false}} }
+  });
+}
+
+async function loadWeekly(lot){
+  document.getElementById('weeklyLotName').textContent = lot;
+  const res = await fetch(`/api/weekly?lot=${encodeURIComponent(lot)}`);
+  const rows = await res.json();
+  if(!Array.isArray(rows)) return;
+  const ctx = document.getElementById('weeklyChart').getContext('2d');
+  if(_weeklyChart) _weeklyChart.destroy();
+  _weeklyChart = new Chart(ctx, {
+    type:'bar',
+    data:{ labels: rows.map(r=>r.day), datasets:[{label:'Avg Occupancy', data:rows.map(r=>r.occupancy_rate), backgroundColor:'#8b5cf6'}] },
+    options:{ scales:{ y:{min:0,max:1,ticks:{color:'#8b95ab'},grid:{color:'#1e2740'}}, x:{ticks:{color:'#8b95ab'},grid:{display:false}} }, plugins:{legend:{display:false}} }
+  });
+}
+
+async function loadModelTab(){
+  try{
+    const res = await fetch('/api/rf_metrics');
+    const m = await res.json();
+    document.getElementById('modelAcc').textContent = (m.accuracy*100).toFixed(2)+'%';
+    document.getElementById('modelAuc').textContent = m.roc_auc.toFixed(4);
+    document.getElementById('modelAp').textContent = m.avg_precision.toFixed(4);
+  }catch(e){}
+}
+
+document.getElementById('lotSelect').addEventListener('change', (e) => {
+  const lot = e.target.value;
+  loadHistory(lot);
+  loadForecast(lot);
+  loadHourly(lot);
+  loadWeekly(lot);
+  loadHistoryChart(lot);
+});
+
+let _forecastChart = null;
+async function loadForecast(lot){
+  document.getElementById('forecastLotName').textContent = lot;
+  try{
+    const res = await fetch(`/api/forecast?lot=${encodeURIComponent(lot)}`);
+    const rows = await res.json();
+    if(!Array.isArray(rows) || rows.length === 0) return;
+
+    const labels = rows.map(r => (r.ForecastTime || '').slice(5,16));
+    const hw = rows.map(r => r.HW_Forecast);
+    const sarima = rows.map(r => r.SARIMA_Forecast);
+    const threshold = rows.map(() => 0.9);
+
+    const ctx = document.getElementById('forecastChart').getContext('2d');
+    if(_forecastChart) _forecastChart.destroy();
+    _forecastChart = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels,
+        datasets: [
+          {label:'Seasonal Occupancy Pattern', data:hw, borderColor:'#22c55e', backgroundColor:'rgba(34,197,94,0.15)', fill:true, tension:0.35, pointRadius:0, borderWidth:2.5},
+          {label:'Statistical Time-Series Forecast', data:sarima, borderColor:'#f59e0b', borderDash:[5,4], fill:false, tension:0.35, pointRadius:0, borderWidth:2},
+          {label:'90% Threshold', data:threshold, borderColor:'#ef4444', borderDash:[8,4], fill:false, pointRadius:0, borderWidth:1.5},
+        ]
+      },
+      options: {
+        responsive:true,
+        interaction:{mode:'index', intersect:false},
+        scales:{
+          y:{min:0,max:1,ticks:{color:'#8b95ab'},grid:{color:'#1e2740'}},
+          x:{ticks:{color:'#8b95ab',maxTicksLimit:8},grid:{color:'#1e2740'}}
+        },
+        plugins:{legend:{labels:{color:'#e8ecf5'}}}
+      }
+    });
+  }catch(e){
+    console.error('forecast load failed', e);
+  }
+}
+
+let _historyChart = null;
+async function loadHistoryChart(lot){
+  document.getElementById('histLotName').textContent = lot;
+  try{
+    const res = await fetch(`/api/history_occupancy?lot=${encodeURIComponent(lot)}&points=150`);
+    const rows = await res.json();
+    if(!Array.isArray(rows) || rows.length === 0) return;
+
+    const labels = rows.map(r => (r.timestamp || '').slice(5,16));
+    const occ = rows.map(r => r.occupancy_rate);
+    const threshold = rows.map(() => 0.9);
+
+    const ctx = document.getElementById('historyChart').getContext('2d');
+    if(_historyChart) _historyChart.destroy();
+    _historyChart = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels,
+        datasets: [
+          {label:'Actual Occupancy Rate', data:occ, borderColor:'#3b82f6', backgroundColor:'rgba(59,130,246,0.12)', fill:true, tension:0.25, pointRadius:0, borderWidth:2},
+          {label:'90% Threshold', data:threshold, borderColor:'#ef4444', borderDash:[8,4], fill:false, pointRadius:0, borderWidth:1.5},
+        ]
+      },
+      options: {
+        responsive:true,
+        interaction:{mode:'index', intersect:false},
+        scales:{
+          y:{min:0,max:1,ticks:{color:'#8b95ab'},grid:{color:'#1e2740'}},
+          x:{ticks:{color:'#8b95ab',maxTicksLimit:8},grid:{color:'#1e2740'}}
+        },
+        plugins:{legend:{labels:{color:'#e8ecf5'}}}
+      }
+    });
+  }catch(e){
+    console.error('history chart load failed', e);
+  }
+}
+
+loadLots();
+loadMetrics();
+loadStatusGrid();
+setInterval(loadStatusGrid, 60000);
+</script>
+<script>fetch('/api/me').then(r=>r.json()).then(u=>{if(!u.name)return;const e=t=>String(t||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+document.getElementById('pname').textContent=u.name;document.getElementById('pav').textContent=u.name.trim()[0].toUpperCase();
+document.getElementById('pcard').innerHTML='<b>'+e(u.name)+'</b><br>ID: '+e(u.username)+'<br>Role: '+e(u.role)+(u.phone?'<br>Phone: '+e(u.phone):'')+(u.email?'<br>Email: '+e(u.email):'')+(u.lot?'<br>Lot: '+e(u.lot):'')+'<br><a href="/profile" style="color:#38bdf8">Open Profile Dashboard →</a>'}).catch(()=>{})</script>
+</body>
+</html>

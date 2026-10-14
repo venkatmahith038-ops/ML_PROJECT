@@ -1,0 +1,41 @@
+<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SmartPark AI – Login</title>
+<style>
+body{font-family:system-ui,sans-serif;background:#0f172a;color:#e2e8f0;margin:0;display:flex;min-height:100vh;align-items:center;justify-content:center}
+.box{background:#1e293b;border-radius:12px;padding:26px;width:340px}h2{margin:0 0 14px;text-align:center}
+.tabs{display:flex;margin-bottom:14px}.tabs button{flex:1;padding:10px;border:0;background:#334155;color:#cbd5e1;cursor:pointer}
+.tabs button:first-child{border-radius:8px 0 0 8px}.tabs button:last-child{border-radius:0 8px 8px 0}
+.tabs button.on{background:#0ea5e9;color:#fff}
+input,select{width:100%;box-sizing:border-box;padding:10px;margin:5px 0;border-radius:6px;border:1px solid #334155;background:#0f172a;color:#e2e8f0}
+.go{width:100%;padding:10px;margin-top:8px;border:0;border-radius:6px;background:#0ea5e9;color:#fff;cursor:pointer}
+.lk{background:none;border:0;color:#38bdf8;cursor:pointer;margin-top:10px;width:100%}
+#msg{margin-top:10px;font-size:14px;text-align:center;color:#f87171}.hide{display:none}
+</style></head><body><div class="box">
+<h2>🅿️ SmartPark AI</h2>
+<div class="tabs"><button id="tu" class="on" onclick="setRole('user')">User Login</button><button id="ta" onclick="setRole('admin')">Admin Login</button></div>
+<div id="rf" class="hide"><input id="fn" placeholder="Full name *"><input id="ph" placeholder="Phone *"><input id="em" placeholder="Email">
+<input id="pl" placeholder="Vehicle plate number *"><select id="vt"><option>Car</option><option>SUV</option><option>Bike</option></select>
+<input id="mm" placeholder="Vehicle make / model"><input id="co" placeholder="Vehicle color"></div>
+<div id="af1" class="hide"><select id="al"><option value="">Select Parking Lot *</option></select><input id="an" placeholder="Name *"></div>
+<input id="u" placeholder="Username"><div id="af2" class="hide"><input id="ap" placeholder="Phone *"><input id="ae" type="email" placeholder="Email *"></div>
+<input id="p" type="password" placeholder="Password" onkeydown="if(event.key==='Enter')go()">
+<button class="go" id="gb" onclick="go()">Login as User</button>
+<button class="lk" id="lk" onclick="toggleReg()">New user? Register</button>
+<div id="msg"></div></div>
+<script>
+let role='user',reg=false;const $=id=>document.getElementById(id);
+function render(){$('tu').classList.toggle('on',role==='user');$('ta').classList.toggle('on',role==='admin');
+ $('rf').classList.toggle('hide',!(reg&&role==='user'));$('u').placeholder=role==='admin'?'ID *':'Username';$('lk').classList.toggle('hide',role==='admin');$('af1').classList.toggle('hide',role!=='admin');$('af2').classList.toggle('hide',role!=='admin');
+ $('gb').textContent=role==='admin'?'Login as Admin':reg?'Create account':'Login as User';
+ $('lk').textContent=reg?'Back to login':'New user? Register';$('msg').textContent=''}
+function setRole(r){role=r;reg=false;render()}
+function toggleReg(){reg=!reg;render()}
+async function post(u,b){const r=await fetch(u,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)});
+ const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||'Error');return j}
+async function go(){try{if(role==='admin'&&!reg){for(const [i,n] of [['al','Parking Lot'],['an','Name'],['u','ID'],['ap','Phone'],['ae','Email'],['p','Password']])if(!$(i).value.trim())throw new Error(n+' is required')}
+ const b={username:$('u').value,password:$('p').value,full_name:$('fn').value,phone:$('ph').value,email:$('em').value,plate:$('pl').value,vtype:$('vt').value,make_model:$('mm').value,color:$('co').value,role};
+ if(role==='admin'){b.lot=$('al').value;b.full_name=$('an').value;b.phone=$('ap').value;b.email=$('ae').value}
+ if(reg&&role==='user'){await post('/api/register',b);reg=false;render();$('msg').style.color='#4ade80';$('msg').textContent='Registered with your vehicle! Please login.';return}
+ const j=await post('/api/login',b);location=j.role==='admin'?'/portal':'/'}catch(e){$('msg').style.color='#f87171';$('msg').textContent=e.message}}
+fetch('/api/lots').then(r=>r.json()).then(l=>l.forEach(x=>{const o=document.createElement('option');o.value=o.textContent=x;$('al').appendChild(o)})).catch(()=>{});
+</script></body></html>

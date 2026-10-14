@@ -1,0 +1,81 @@
+<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SmartPark AI – Portal</title>
+<style>
+body{font-family:system-ui,sans-serif;background:#0f172a;color:#e2e8f0;margin:0}
+header{display:flex;justify-content:space-between;padding:14px 24px;background:#1e293b}
+a{color:#38bdf8}main{max-width:1100px;margin:24px auto;padding:0 16px}
+.card{background:#1e293b;border-radius:10px;padding:18px;margin-bottom:18px}
+input,select,button{padding:8px 10px;border-radius:6px;border:1px solid #334155;background:#0f172a;color:#e2e8f0;margin:3px}
+button{background:#0ea5e9;border:0;cursor:pointer;color:#fff}button.alt{background:#475569}
+table{width:100%;border-collapse:collapse;font-size:14px}th,td{padding:6px 8px;border-bottom:1px solid #334155;text-align:left}
+.tag{padding:2px 8px;border-radius:10px;font-size:12px}.Available{background:#166534}.Near\ Full{background:#a16207}.Full{background:#991b1b}
+#err{color:#f87171}.hide{display:none}.wrap{overflow-x:auto}
+th{position:sticky;top:0;background:#1e293b}</style></head><body>
+<header><b>🅿️ SmartPark AI Portal</b><span><a href="/">← Dashboard</a> <a href="/profile">👤 Profile</a> <span id="who"></span> <button class="alt" id="lo" onclick="logout()">Logout</button></span></header>
+<main>
+<div id="app" class="hide"></div>
+</main>
+<script>
+let role=null;
+const $=id=>document.getElementById(id);
+const api=async(u,b)=>{const r=await fetch(u,b===undefined?{}:{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)});
+ const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||'Error');return j};
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const fmt=t=>t?t.replace('T',' '):'—';
+function toggleMode(){reg=!reg;$('fn').classList.toggle('hide',!reg);$('atitle').textContent=reg?'Register':'Login';
+ $('abtn').textContent=reg?'Create account':'Login';$('tbtn').textContent=reg?'Back to login':'New user? Register';$('err').textContent=''}
+async function submitAuth(){try{
+ const b={username:$('u').value,password:$('p').value,full_name:$('fn').value};
+ if(reg){await api('/api/register',b);toggleMode();$('err').textContent='Registered — please login.';return}
+ await api('/api/login',b);start()}catch(e){$('err').textContent=e.message}}
+async function logout(){await api('/api/logout',{});location='/login'}
+function avTable(a){return `<div class="wrap"><table><tr><th>Lot</th><th>Status</th><th>Occupied</th><th>Available</th><th>Car</th><th>SUV</th><th>Bike</th></tr>`+
+ a.map(l=>`<tr><td>${esc(l.lot)}</td><td><span class="tag ${l.status}">${l.status}</span></td><td>${l.occupied_pct}%</td><td>${l.available}/${l.capacity}</td>`+
+ ['Car','SUV','Bike'].map(t=>`<td>${l.types[t].available}/${l.types[t].capacity}</td>`).join('')+`</tr>`).join('')+`</table></div>`}
+function histTable(h,admin,fx){return `<div class="wrap"><table><tr>${admin?'<th>User</th><th>Phone</th>':''}<th>Plate</th><th>Type</th><th>Vehicle</th><th>Lot</th><th>Entry</th><th>Exit</th>${fx?'<th>Manage</th>':''}</tr>`+
+ (h.length?h.map(r=>`<tr>${admin?`<td>${esc(r.full_name)} (${esc(r.username)})</td><td>${esc(r.phone)}</td>`:''}<td>${esc(r.plate)}</td><td>${r.vtype}</td><td>${esc(r.make_model)} ${esc(r.color)}</td><td>${esc(r.lot)}</td><td>${fmt(r.entry_time)}</td><td>${fmt(r.exit_time)}</td>${fx?`<td><button class="alt" onclick="fexit(${r.id})">Force exit</button></td>`:''}</tr>`).join(''):'<tr><td colspan=9>No records yet</td></tr>')+`</table></div>`}
+async function start(){const me=await api('/api/me');role=me.role;$('app').classList.remove('hide');$('who').textContent=`${me.name} (${role})`;role==='admin'?admin():user()}
+async function user(){
+ const [av,vs,h]=await Promise.all([api('/api/availability'),api('/api/vehicles'),api('/api/my_history')]);
+ const parked=new Set(h.filter(r=>!r.exit_time).map(r=>r.plate));
+ $('app').innerHTML=`<div class="card"><h3>Live availability by vehicle type</h3><small>Estimated from real historical occupancy for this lot/day/hour. Zones: Car 70%, SUV 20%, Bike 10% of capacity.</small>${avTable(av)}</div>
+ <div class="card"><h3>My vehicles</h3>
+ <input id="pl" placeholder="Plate"><select id="vt"><option>Car</option><option>SUV</option><option>Bike</option></select>
+ <input id="mm" placeholder="Make / model"><input id="co" placeholder="Color"><button onclick="addV()">Add</button><span id="e2" style="color:#f87171"></span>
+ <div class="wrap"><table><tr><th>Plate</th><th>Type</th><th>Vehicle</th><th>Action</th></tr>`+
+ vs.map(v=>`<tr><td>${esc(v.plate)}</td><td>${v.vtype}</td><td>${esc(v.make_model)} ${esc(v.color)}</td><td>${parked.has(v.plate)?
+ `<button class="alt" onclick="doExit(${v.id})">Log exit</button>`:
+ `<select id="lot${v.id}">${av.map(l=>`<option>${esc(l.lot)}</option>`).join('')}</select><button onclick="doEntry(${v.id})">Log entry</button>`}</td></tr>`).join('')+
+ `</table></div></div><div class="card"><h3>My entry / exit history</h3>${histTable(h,false)}</div>`}
+async function addV(){try{await api('/api/vehicles',{plate:$('pl').value,vtype:$('vt').value,make_model:$('mm').value,color:$('co').value});user()}catch(e){$('e2').textContent=e.message}}
+async function doEntry(id){try{await api('/api/entry',{vehicle_id:id,lot:$('lot'+id).value});user()}catch(e){alert(e.message)}}
+async function doExit(id){try{await api('/api/exit',{vehicle_id:id});user()}catch(e){alert(e.message)}}
+let timer=null,last='',D=null;
+const dur=(a,b)=>{const m=Math.max(0,Math.round(((b?new Date(b):new Date())-new Date(a))/60000));return m<60?m+' min':Math.floor(m/60)+'h '+m%60+'m'};
+const stag=p=>`<span class="tag" style="background:${p?'#166534':'#475569'}">${p?'Currently Parked':'Exited'}</span>`;
+function renderSearch(){
+ const q=$('q').value.toUpperCase().replace(/\s+/g,''),box=$('sr');if(!q||!D){box.innerHTML='';return}
+ const m=D.log.filter(r=>r.plate.replace(/\s+/g,'').includes(q)||r.full_name.toUpperCase().replace(/\s+/g,'').includes(q));
+ const g={};m.forEach(r=>(g[r.plate]=g[r.plate]||[]).push(r));const ks=Object.keys(g);
+ box.innerHTML=ks.length?ks.slice(0,10).map(k=>{const H=g[k],r=H[0];
+  return `<div style="border:1px solid #334155;border-radius:8px;padding:10px;margin-top:10px"><b>${esc(k)}</b> · ${esc(r.full_name)} · ${esc(r.vtype)} · ${stag(!r.exit_time)}<br><small>Lot: ${esc(D.lot)} · Latest entry: ${fmt(r.entry_time)} · Latest exit: ${fmt(r.exit_time)} · Total visits: ${H.length}</small>
+  <div class="wrap"><table><tr><th>Entry Time</th><th>Exit Time</th><th>Duration</th><th>Status</th></tr>${H.map(x=>`<tr><td>${fmt(x.entry_time)}</td><td>${fmt(x.exit_time)}</td><td>${dur(x.entry_time,x.exit_time)}</td><td>${x.exit_time?'Exited':'Parked'}</td></tr>`).join('')}</table></div></div>`}).join('')+(ks.length>10?`<small>Showing 10 of ${ks.length} matches — refine your search</small>`:''):'<p>No vehicle found in this lot</p>'}
+async function admin(){
+ if(!timer)timer=setInterval(admin,3000); // auto-refresh: new entries/exits appear here
+ let o;try{o=await api('/api/admin/overview')}catch(e){return}
+ const key=JSON.stringify(o);if(key===last)return;last=key;D=o;
+ if(!$('sum'))$('app').innerHTML=`<div class="card" id="sum"></div><div class="card"><h3 id="bh"></h3><div class="wrap" id="bk" style="max-height:300px;overflow:auto"></div></div><div class="card"><h3>🔍 Search Vehicle</h3><input id="q" placeholder="Vehicle number or user name" oninput="renderSearch()" style="width:min(360px,90%)"><div id="sr"></div></div>
+ <div class="card"><h3 id="ph"></h3><div class="wrap" id="pk" style="max-height:420px;overflow:auto"></div></div><div class="card"><h3 id="eh"></h3><div class="wrap" id="ex" style="max-height:420px;overflow:auto"></div></div>`;
+ const P=o.log.filter(r=>!r.exit_time),E=o.log.filter(r=>r.exit_time);
+ $('sum').innerHTML=`<h3>🅿️ ${esc(o.lot)}</h3><span class="tag ${o.status}">${o.status}</span> Occupied ${o.occupied_pct}% · Parked ${o.occupied} of ${o.capacity} · Available ${o.available}<br><small>Includes sample vehicles sized to the predicted occupancy, plus real user entries.</small><br><a href="/">Open Prediction Dashboard →</a>`;
+ const put=(id,h)=>{const e=$(id),t=e.scrollTop;e.innerHTML=h;e.scrollTop=t};
+ const tb=(rows,ex)=>`<table><tr><th>User Name</th><th>Vehicle Number</th><th>Type</th><th>Entry Time</th>${ex?'<th>Exit Time</th>':''}<th>Status</th>${ex?'':'<th>Overstay Fee</th><th>Action</th>'}</tr>`+rows.map(r=>`<tr><td>${esc(r.full_name)}</td><td>${esc(r.plate)}</td><td>${esc(r.vtype)}</td><td>${fmt(r.entry_time)}</td>${ex?`<td>${fmt(r.exit_time)}</td>`:''}<td>${ex?'Exited':(r.overstay?`<b style="color:#f87171">⚠️ Overstay (+${r.overstay_hours}h)</b>`:'<b style="color:#4ade80">Parked</b>')}</td>${ex?'':`<td>${r.overstay?'₹'+r.overstay_fee:'—'}</td><td>${(r.overstay&&r.id>0)?`<button onclick="fexit(${r.id})">Confirm Exit</button>`:''}</td>`}</tr>`).join('')+`</table>`;
+ $('ph').innerHTML=`Currently Parked Vehicles (${P.length})${o.overstay_n?` · <span style="color:#f87171">⚠️ ${o.overstay_n} overstaying</span>`:''} <small>live, updates every 3s</small>`;$('eh').textContent=`Exited Vehicles (${E.length})`;
+ const pend=o.bookings.filter(b=>b.status==='Pending').length;
+ $('bh').textContent=`📅 Bookings (${o.bookings.length}) — ${pend} pending approval`;
+ put('bk','<table><tr><th>User Name</th><th>Vehicle Number</th><th>Type</th><th>Date</th><th>Time</th><th>Amount</th><th>Payment</th><th>Status</th><th>Action</th></tr>'+(o.bookings.length?o.bookings.map(b=>`<tr><td>${esc(b.full_name)}</td><td>${esc(b.plate)}</td><td>${esc(b.vtype)}</td><td>${b.book_date}</td><td>${b.book_time}</td><td>₹${b.amount}</td><td>${esc(b.payment_method)} · ${esc(b.payment_id)}</td><td>${b.status}</td><td>${b.status==='Pending'?`<button onclick="bdec(${b.id},'Approved')">Approve</button> <button class="alt" onclick="bdec(${b.id},'Rejected')">Reject</button>`:'—'}</td></tr>`).join(''):'<tr><td colspan=9>No bookings yet</td></tr>')+'</table>');
+ put('pk',tb(P,false));put('ex',tb(E,true));renderSearch()}
+async function bdec(id,action){try{await api('/api/bookings/decide',{id,action})}catch(e){alert(e.message)}last='';admin()}
+async function fexit(id){if(!confirm('Mark this vehicle as exited?'))return;try{await api('/api/admin/force_exit',{session_id:id});admin()}catch(e){alert(e.message)}}
+api('/api/me').then(start).catch(()=>{location='/login'});
+</script></body></html>

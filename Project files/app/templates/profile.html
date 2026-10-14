@@ -1,0 +1,101 @@
+<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SmartPark AI – Profile</title>
+<style>
+body{font-family:system-ui,sans-serif;background:#0f172a;color:#e2e8f0;margin:0}
+header{display:flex;justify-content:space-between;padding:14px 24px;background:#1e293b}a{color:#38bdf8;text-decoration:none}
+.layout{display:flex;gap:18px;max-width:1150px;margin:24px auto;padding:0 16px;align-items:flex-start}
+nav{background:#1e293b;border-radius:10px;padding:10px;min-width:190px}nav button{display:block;width:100%;text-align:left;margin:4px 0;background:transparent;color:#e2e8f0}
+nav button.on{background:#0ea5e9}nav button.out{color:#f87171}
+main{flex:1;min-width:0}.card{background:#1e293b;border-radius:10px;padding:18px;margin-bottom:18px}
+input,select,textarea,button{padding:8px 10px;border-radius:6px;border:1px solid #334155;background:#0f172a;color:#e2e8f0;margin:3px;font:inherit}
+button{background:#0ea5e9;border:0;cursor:pointer;color:#fff}textarea{width:96%;min-height:90px}
+table{width:100%;border-collapse:collapse;font-size:14px}th,td{padding:6px 8px;border-bottom:1px solid #334155;text-align:left}th{position:sticky;top:0;background:#1e293b}
+.av{width:72px;height:72px;border-radius:50%;background:linear-gradient(135deg,#3b82f6,#8b5cf6);display:flex;align-items:center;justify-content:center;font-size:32px;font-weight:700;color:#fff}
+.row{display:flex;gap:16px;align-items:center}.kv{line-height:1.9}.tag{padding:2px 8px;border-radius:10px;font-size:12px;background:#475569}.Open{background:#a16207}.Resolved{background:#166534}
+.wrap{overflow:auto;max-height:520px}.hide{display:none}#msg{color:#4ade80}#err{color:#f87171}@media(max-width:700px){.layout{flex-direction:column}nav{width:100%}}
+</style></head><body>
+<header><b>🅿️ SmartPark AI · Profile Dashboard</b><span><a href="/">← Dashboard</a> · <a href="/portal">Parking Portal</a></span></header>
+<div class="layout"><nav id="nav">
+<button data-t="t1" class="on">👤 Profile Details</button><button data-t="t2">🕘 Parking History</button>
+<button data-t="t4" id="nb">📅 Book Parking</button><button data-t="t3">📝 Report / Complaint</button><button class="out" onclick="logout()">🚪 Logout</button></nav>
+<main>
+<div id="t1" class="card"></div>
+<div id="t2" class="card hide"></div>
+<div id="t4" class="hide"><div class="card"><h3>📅 Book Parking</h3>
+<select id="bl" onchange="bkAvail()"></select><select id="bv"></select><br>
+<label>Date <input id="bd" type="date" onchange="bkAvail()"></label><label>Preferred time <input id="bt" type="time" onchange="bkAvail()"></label>
+<div id="bav" style="margin:10px 3px"></div><select id="bp"><option>Card</option><option>UPI</option><option>Cash</option></select>
+<button onclick="bkGo()">💳 Book Now with Payment</button> <span id="bmsg"></span><span id="berr" style="color:#f87171"></span></div>
+<div class="card" id="bcf" style="display:none"></div><div class="card" id="bml"></div></div>
+<div id="t3" class="hide"><div class="card"><h3>Report / Complaint</h3>
+<select id="cl"></select><select id="cc"><option>Wrong availability</option><option>Vehicle issue</option><option>Payment / Fees</option><option>Safety / Security</option><option>Other</option></select>
+<input id="cp" placeholder="Vehicle number (optional)"><br><textarea id="cm" placeholder="Describe your issue *"></textarea><br>
+<button onclick="sendC()">Submit</button> <span id="msg"></span><span id="err"></span></div>
+<div class="card" id="cmine"></div><div class="card hide" id="clot"></div></div>
+</main></div>
+<script>
+const $=i=>document.getElementById(i),esc=t=>String(t??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])),fmt=t=>t?String(t).replace('T',' '):'—';
+let me=null;
+const j=async(u,o)=>{const r=await fetch(u,o);const d=await r.json();if(r.status===401)location='/login';if(!r.ok)throw new Error(d.error||'Error');return d};
+document.querySelectorAll('#nav button[data-t]').forEach(b=>b.onclick=()=>{document.querySelectorAll('#nav button').forEach(x=>x.classList.remove('on'));b.classList.add('on');['t1','t2','t3','t4'].forEach(t=>$(t).classList.toggle('hide',t!==b.dataset.t));if(b.dataset.t==='t2')hist();if(b.dataset.t==='t3')comps();if(b.dataset.t==='t4')bkInit()});
+async function logout(){await fetch('/api/logout',{method:'POST'});location='/login'}
+async function init(){me=await j('/api/me');const adm=me.role==='admin';
+ $('t1').innerHTML=`<div class="row"><div class="av">${esc(me.name||'?').trim()[0].toUpperCase()}</div><div><h2 style="margin:0">${esc(me.name)}</h2><span class="tag">${adm?'Admin':'User'}</span></div></div><div class="kv" style="margin-top:14px">ID / Username: <b>${esc(me.username)}</b><br>Phone: <b>${esc(me.phone||'—')}</b><br>Email: <b>${esc(me.email||'—')}</b><br>Registered on: <b>${fmt(me.created)}</b>${adm?`<br>Parking Lot: <b>${esc(me.lot||'—')}</b>`:''}</div>`;
+ if(!adm){const v=await j('/api/vehicles');$('t1').insertAdjacentHTML('beforeend',`<h3 style="margin-top:18px">🚗 Registered Vehicles</h3><div class="wrap" style="max-height:240px"><table><tr><th>Vehicle Number</th><th>Type</th><th>Make / Model</th><th>Color</th></tr>`+(v.length?v.map(x=>`<tr><td>${esc(x.plate)}</td><td>${esc(x.vtype)}</td><td>${esc(x.make_model||'—')}</td><td>${esc(x.color||'—')}</td></tr>`).join(''):'<tr><td colspan=4>No vehicles registered</td></tr>')+'</table></div>')}
+ if(adm)$('nb').style.display='none';
+ if(adm){$('cl').outerHTML='<b id="cl" data-v="'+esc(me.lot)+'">Lot: '+esc(me.lot)+'</b>';$('clot').classList.remove('hide')}
+ else{const l=await j('/api/lots');$('cl').innerHTML='<option value="">Select parking lot *</option>'+l.map(x=>`<option>${esc(x)}</option>`).join('')}}
+function exitHTML(a){return `<div style="border:1px solid #334155;border-radius:8px;padding:10px;margin-bottom:8px">${a.overstay?'<b style="color:#f87171">⚠️ Overstay — please exit soon</b><br>':''}${esc(a.plate)} · ${esc(a.vtype)} in <b>${esc(a.lot)}</b><br>Entry: ${fmt(a.entry_time)} · So far: ${a.hours_so_far}h · Est. fee: ₹${a.fee_so_far}<br><button onclick="doExit(${a.vehicle_id})">Exit Now</button></div>`}
+async function exitCard(){const act=await j('/api/my_active');
+ return '<h3>🚗 Exit Parking</h3>'+(act.length?act.map(exitHTML).join(''):'<p>No vehicle currently parked.</p>')}
+async function doExit(vid){if(!confirm('Confirm exit now?'))return;try{
+ const r=await j('/api/exit',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({vehicle_id:vid})});
+ alert(`✅ Exit Confirmed\nDuration: ${r.duration_hours}h\nFinal Fee: ₹${r.fee}${r.overstay?' (includes overstay)':''}`);
+ hist()}catch(e){alert(e.message)}}
+async function hist(){const adm=me.role==='admin';let rows,bt=adm?'':await exitCard();if(!adm)bt+='<h3>My Bookings</h3>'+bkT(await j('/api/bookings'));
+ if(adm){const o=await j('/api/admin/overview');rows=o.log.slice(0,300)}else rows=await j('/api/my_history');
+ $('t2').innerHTML=bt+`<h3>Parking History${adm?' — '+esc(me.lot)+' (latest 300)':''}</h3><div class="wrap"><table><tr>${adm?'<th>User</th>':'<th>Lot</th>'}<th>Vehicle</th><th>Type</th><th>Entry</th><th>Exit</th><th>Status</th></tr>`+
+ (rows.length?rows.map(r=>`<tr><td>${esc(adm?r.full_name:r.lot)}</td><td>${esc(r.plate)}</td><td>${esc(r.vtype)}</td><td>${fmt(r.entry_time)}</td><td>${fmt(r.exit_time)}</td><td>${r.exit_time?'Exited':'<b style="color:#4ade80">Parked</b>'}</td></tr>`).join(''):'<tr><td colspan=6>No parking history yet</td></tr>')+'</table></div>'}
+const ct=(rows,adm)=>`<div class="wrap"><table><tr>${adm?'<th>User</th>':'<th>Lot</th>'}<th>Category</th><th>Vehicle</th><th>Message</th><th>Date</th><th>Status</th>${adm?'<th></th>':''}</tr>`+(rows.length?rows.map(r=>`<tr><td>${esc(adm?r.full_name:r.lot)}</td><td>${esc(r.category)}</td><td>${esc(r.plate||'—')}</td><td>${esc(r.message)}</td><td>${fmt(r.created)}</td><td><span class="tag ${r.status}">${r.status}</span></td>${adm?`<td>${r.status==='Open'?`<button onclick="res(${r.id})">Resolve</button>`:''}</td>`:''}</tr>`).join(''):`<tr><td colspan=7>None</td></tr>`)+'</table></div>';
+async function comps(){const d=await j('/api/complaints');$('cmine').innerHTML='<h3>My Reports</h3>'+ct(d.mine,false);if(me.role==='admin')$('clot').innerHTML=`<h3>Complaints for ${esc(me.lot)}</h3>`+ct(d.lot,true)}
+async function res(id){await j('/api/complaints/resolve',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id})});comps()}
+async function sendC(){$('msg').textContent=$('err').textContent='';try{
+ const lot=me.role==='admin'?me.lot:$('cl').value;
+ await j('/api/complaints',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({lot,category:$('cc').value,plate:$('cp').value,message:$('cm').value})});
+ $('msg').textContent='Submitted ✔';$('cm').value=$('cp').value='';comps()}catch(e){$('err').textContent=e.message}}
+function receiptHTML(b){
+  const paid=`<span class="tag Resolved">Paid ✔</span>`,st={Pending:'<span class="tag Open">Pending Admin Approval</span>',
+    Approved:'<span class="tag Resolved">Approved ✔</span>',Rejected:'<span class="tag" style="background:#7f1d1d">Rejected</span>',
+    Cancelled:'<span class="tag">Cancelled</span>'}[b.status]||b.status;
+  return `<h3>🧾 Booking Receipt #${b.id}</h3><div class="kv">
+  Parking Lot: <b>${esc(b.lot)}</b><br>Vehicle Number: <b>${esc(b.plate)}</b><br>Vehicle Type: <b>${esc(b.vtype)}</b>${b.make_model?`<br>Make/Model: <b>${esc(b.make_model)}</b>`:''}${b.color?`<br>Color: <b>${esc(b.color)}</b>`:''}
+  <br>Date &amp; Time: <b>${b.book_date} ${b.book_time}</b><br>Amount: <b>₹${b.amount}</b> · ${paid} (${esc(b.payment_method)})<br>Payment ID: <b>${esc(b.payment_id)}</b>
+  <br>Booking Status: ${st}</div>`}
+const bkT=rows=>`<div class="wrap" style="max-height:260px"><table><tr><th>#</th><th>Lot</th><th>Vehicle</th><th>Type</th><th>Date</th><th>Time</th><th>Amount</th><th>Status</th><th></th></tr>`+(rows.length?rows.map(r=>`<tr><td>${r.id}</td><td>${esc(r.lot)}</td><td>${esc(r.plate)}</td><td>${esc(r.vtype)}</td><td>${r.book_date}</td><td>${r.book_time}</td><td>₹${r.amount}</td><td><span class="tag ${({Pending:'Open',Approved:'Resolved'})[r.status]||''}">${r.status}</span></td><td><button onclick='showReceipt(${JSON.stringify(r).replace(/'/g,"&#39;")})'>Receipt</button> ${(r.status==='Pending'||r.status==='Approved')?`<button onclick="cancelB(${r.id})">Cancel</button>`:''}</td></tr>`).join(''):'<tr><td colspan=9>No bookings yet</td></tr>')+'</table></div>';
+let bkReady=false;
+async function bkInit(){if(!bkReady){bkReady=true;const [l,v]=await Promise.all([j('/api/lots'),j('/api/vehicles')]);
+ $('bl').innerHTML='<option value="">Select parking lot *</option>'+l.map(x=>`<option>${esc(x)}</option>`).join('');
+ $('bv').innerHTML=v.length?v.map(x=>`<option value="${x.id}">${esc(x.plate)} · ${esc(x.vtype)}</option>`).join(''):'<option value="">No vehicles – add one in Parking Portal</option>';
+ const n=new Date(Date.now()+36e5),z=n=>String(n).padStart(2,'0');$('bd').value=$('bd').min=`${n.getFullYear()}-${z(n.getMonth()+1)}-${z(n.getDate())}`;$('bt').value=z(n.getHours())+':00'}
+ bkList()}
+async function bkList(){$('bml').innerHTML='<h3>My Bookings</h3>'+bkT(await j('/api/bookings'))}
+async function bkAvail(){const l=$('bl').value,d=$('bd').value,t=$('bt').value;if(!l||!d||!t){$('bav').textContent='';return}
+ try{const a=await j(`/api/book/availability?lot=${encodeURIComponent(l)}&date=${d}&time=${t}`);$('bav').innerHTML=`Available spaces: <b style="color:${a.available?'#4ade80':'#f87171'}">${a.available}</b> of ${a.capacity} · Predicted occupancy ${a.occupied_pct}% · ${a.status}`}catch(e){$('bav').textContent=e.message}}
+async function bkGo(){$('berr').textContent='';$('bmsg').textContent='⏳ Payment Pending — processing...';
+ const btn=event.target;btn.disabled=true;$('bcf').style.display='none';
+ try{
+ const r=await j('/api/bookings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({lot:$('bl').value,vehicle_id:$('bv').value,date:$('bd').value,time:$('bt').value,payment_method:$('bp').value})});
+ $('bmsg').textContent='';
+ // receipt is generated only now, after payment is confirmed Paid
+ $('bcf').style.display='block';$('bcf').innerHTML=receiptHTML(r.booking)+'<div style="margin-top:8px;color:#94a3b8">Sent to the lot admin for approval. Spaces update once approved.</div>';bkAvail();bkList()
+ }catch(e){$('bmsg').textContent='';$('berr').textContent='❌ Payment Failed — '+e.message}
+ finally{btn.disabled=false}}
+async function cancelB(id){await j('/api/bookings/cancel',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id})});bkList();hist();bkAvail()}
+function showReceipt(b){const m=document.createElement('div');m.id='rcModal';
+ m.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:100;display:flex;align-items:center;justify-content:center;padding:16px';
+ m.onclick=e=>{if(e.target===m)m.remove()};
+ m.innerHTML=`<div class="card" style="max-width:420px;width:100%"><div style="text-align:right"><button onclick="this.closest('#rcModal').remove()" style="background:none;color:#94a3b8">✕</button></div>${receiptHTML(b)}</div>`;
+ document.body.appendChild(m)}
+setInterval(()=>{if(!$('t4').classList.contains('hide'))bkList()},5000); // reflect admin approval automatically
+init();
+</script></body></html>
